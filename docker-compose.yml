@@ -1,0 +1,9 @@
+version: "2"
+
+services: 
+  iot-mqtt-server:
+    build: .
+    restart: unless-stopped
+    container_name: "mqtt-server"
+    ports:
+      - '1883:1883'
