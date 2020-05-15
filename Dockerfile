@@ -40,7 +40,8 @@ RUN go get google.golang.org/grpc/credentials
 RUN go get google.golang.org/grpc/status
 
 COPY mqtt mqtt
+COPY mosquitto.conf /mqtt/mosquitto/mosquitto.conf
 COPY build.sh .
 RUN ./build.sh
-CMD ./mqtt/mosquitto/src/mosquitto -c /mqtt/mosquitto/mosquitto.conf && tail -f /dev/null
+CMD  ./mqtt/mosquitto/src/mosquitto -c mosquitto.conf && tail -f /dev/null
 

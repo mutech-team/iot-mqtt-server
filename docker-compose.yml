@@ -6,4 +6,4 @@ services:
     restart: unless-stopped
     container_name: "mqtt-server"
     ports:
-      - '1883:1883'
+      - '4000:1883'

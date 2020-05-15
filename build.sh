@@ -1,18 +1,12 @@
 #!/bin/bash
-
 export CGO_CFLAGS="-I/usr/local/include -fPIC"
 export CGO_LDFLAGS="-shared"
-make
 
-cd $PWD/mqtt/libwebsockets
+cd $PWD/mqtt//mosquitto
 make clean
-cmake . -DLIB_SUFFIX=64
-make
-make install
-cd ../mosquitto
-make clean 
-make 
+make WITH_BUNDLED_DEPS=no WITH_TLS=yes WITH_WEBSOCKETS=yes WITH_DOSC=false
 make install 
 cd ../mosquitto-go-auth
-make 
+go build -buildmode=c-archive go-auth.go
+go build -buildmode=c-shared -o go-auth.so 
 cd
