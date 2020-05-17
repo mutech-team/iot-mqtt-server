@@ -15,6 +15,7 @@ RUN apt-get -y install libwebsockets-dev
 RUN apt-get -y install libc-ares2
 RUN apt-get -y install libc-ares-dev
 RUN apt-get -y install openssl
+RUN apt-get -y install redis redis-server
 RUN apt-get -y install uuid
 RUN apt-get -y install uuid-dev
 RUN apt-get -y install golang-go
@@ -43,5 +44,5 @@ COPY mqtt mqtt
 COPY mosquitto.conf /mqtt/mosquitto/mosquitto.conf
 COPY build.sh .
 RUN ./build.sh
-CMD ./mqtt/mosquitto/src/mosquitto -c /mqtt/mosquitto/mosquitto.conf && tail -f /dev/null
+CMD echo 'requirepass cachepass' >> /etc/redis/redis.conf && service redis-server restart && redis-server --daemonize yes && ./mqtt/mosquitto/src/mosquitto -c /mqtt/mosquitto/mosquitto.conf && tail -f /dev/null
 

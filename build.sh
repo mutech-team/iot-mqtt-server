@@ -2,7 +2,7 @@
 export CGO_CFLAGS="-I/usr/local/include -fPIC"
 export CGO_LDFLAGS="-shared"
 
-cd $PWD/mqtt//mosquitto
+cd $PWD/mqtt/mosquitto
 make clean
 make WITH_BUNDLED_DEPS=no WITH_TLS=yes WITH_WEBSOCKETS=yes WITH_DOSC=false
 make install 
