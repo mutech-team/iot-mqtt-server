@@ -1,9 +1,9 @@
 version: "2"
 
 services: 
-  iot-mqtt-server:
+  mutech-iot-mqtt-server:
     build: .
     restart: unless-stopped
-    container_name: "mqtt-server"
+    container_name: "iot-mqtt-server"
     ports:
       - '1883:1883'
