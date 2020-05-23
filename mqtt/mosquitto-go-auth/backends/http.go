@@ -11,9 +11,8 @@ import (
 	"strconv"
 	"time"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 )
 
 type HTTP struct {
@@ -110,8 +109,6 @@ func NewHTTP(authOpts map[string]string, logLevel log.Level) (HTTP, error) {
 		return http, errors.Errorf("HTTP backend error: missing remote options: %s", missingOpts)
 	}
 
-	// create instance of transport and client to be reused for all
-	// http calls
 	http.Client = &h.Client{Timeout: 5 * time.Second}
 
 	if !http.VerifyPeer {
@@ -143,6 +140,10 @@ func (o HTTP) GetUser(username, password, clientid string) bool {
 }
 
 func (o HTTP) GetSuperuser(username string) bool {
+
+	if o.SuperuserUri == "" {
+		return false
+	}
 
 	var dataMap = map[string]interface{}{
 		"username": username,
@@ -178,6 +179,11 @@ func (o HTTP) CheckAcl(username, topic, clientid string, acc int32) bool {
 
 func (o HTTP) httpRequest(uri, username string, dataMap map[string]interface{}, urlValues map[string][]string) bool {
 
+	// Don't do the request if the client is nil.
+	if o.Client == nil {
+		return false
+	}
+
 	tlsStr := "http://"
 
 	if o.WithTLS {
@@ -195,7 +201,8 @@ func (o HTTP) httpRequest(uri, username string, dataMap map[string]interface{}, 
 	if o.ParamsMode == "form" {
 		resp, err = o.Client.PostForm(fullUri, urlValues)
 	} else {
-		dataJson, err := json.Marshal(dataMap)
+		var dataJson []byte
+		dataJson, err = json.Marshal(dataMap)
 
 		if err != nil {
 			log.Errorf("marshal error: %s", err)
@@ -203,7 +210,8 @@ func (o HTTP) httpRequest(uri, username string, dataMap map[string]interface{}, 
 		}
 
 		contentReader := bytes.NewReader(dataJson)
-		req, err := h.NewRequest("POST", fullUri, contentReader)
+		var req *h.Request
+		req, err = h.NewRequest("POST", fullUri, contentReader)
 
 		if err != nil {
 			log.Errorf("req error: %s", err)
@@ -221,12 +229,13 @@ func (o HTTP) httpRequest(uri, username string, dataMap map[string]interface{}, 
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
-	defer resp.Body.Close()
 
 	if err != nil {
 		log.Errorf("read error: %s", err)
 		return false
 	}
+
+	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		log.Infof("error code: %d", resp.StatusCode)
