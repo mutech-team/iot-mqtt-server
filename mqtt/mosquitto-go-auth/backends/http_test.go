@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	log "github.com/sirupsen/logrus"
-
 	. "github.com/smartystreets/goconvey/convey"
 )
 
@@ -95,6 +94,7 @@ func TestHTTPAllJsonServer(t *testing.T) {
 	authOpts["http_getuser_uri"] = "/user"
 	authOpts["http_superuser_uri"] = "/superuser"
 	authOpts["http_aclcheck_uri"] = "/acl"
+	authOpts["http_timeout"] = "5"
 
 	Convey("Given correct options an http backend instance should be returned", t, func() {
 		hb, err := NewHTTP(authOpts, log.DebugLevel)

@@ -4,11 +4,11 @@ Mosquitto Go Auth is an authentication and authorization plugin for the Mosquitt
 
 ### Intro
 
-This is an authentication and authorization plugin for [mosquitto](https://mosquitto.org/), a well known open source MQTT broker. It's written (almost) entirely in Go: it uses cgo to expose mosquitto's auth plugin needed functions, but internally just calls Go to get everything done. 
+This is an authentication and authorization plugin for [mosquitto](https://mosquitto.org/), a well known open source MQTT broker. It's written (almost) entirely in Go: it uses `cgo` to expose mosquitto's auth plugin needed functions, but internally just calls Go to get everything done. 
 
 It is greatly inspired in [jpmens'](https://github.com/jpmens) [mosquitto-auth-plug](https://github.com/jpmens/mosquitto-auth-plug).
 
-It was intended for use with [brocaar's](https://github.com/brocaar) [Loraserver project](https://www.loraserver.io/), and thus Files, Postgres and JWT backends were the first to be developed, but more have been added. These are the backends that this plugin implements right now:
+These are the backends that this plugin implements right now:
 
 * Files
 * PostgreSQL
@@ -35,6 +35,7 @@ Please open an issue with the `feature` or `enhancement` tag to request new back
 - [Configuration](#configuration)
 	- [General options](#general-options)
 	- [Cache](#cache)
+	- [Hashing](#hashing)
 	- [Log level](#log-level)
 	- [Prefixes](#prefixes)
 	- [Backend options](#backend-options)
@@ -76,23 +77,23 @@ Please open an issue with the `feature` or `enhancement` tag to request new back
 ### Requirements
 
 This package uses `Go modules` to manage dependencies, `dep` is no longer supported.
-As it interacts with mosquitto, it makes use of Cgo. Also, it (optionally) uses Redis for cache purposes.
+As it interacts with `mosquitto`, it makes use of `cgo`. Also, it (optionally) uses Redis for cache purposes.
 
 
 ### Build
 
-Before building, you need to build mosquitto. For completeness, we'll build it with websockets, ssl and srv support.
+Before building, you need to build `mosquitto`. For completeness, we'll build it with `websockets`, `tls` and `srv` support.
 
-First, install dependencies (tested on Debian 9 and later, Linux Mint 18 and 19):
+First, install dependencies (tested on Debian 9 and later, Linux Mint 18, 19 and 20):
 
-`sudo apt-get install libwebsockets8  libwebsockets-dev libc-ares2 libc-ares-dev openssl uuid uuid-dev`
+`sudo apt-get install libwebsockets8 libwebsockets-dev libc-ares2 libc-ares-dev openssl uuid uuid-dev`
 
 Download mosquitto and extract it (**change versions accordingly**):
 
 ```
 wget http://mosquitto.org/files/source/mosquitto-1.6.8.tar.gz
-tar xzvf mosquitto-1.6.8.tar.gz
-cd mosquitto-1.6.8
+tar xzvf mosquitto-1.6.10.tar.gz
+cd mosquitto-1.6.10
 ```
 
 Modify config.mk, setting websockets support. Then build mosquitto, add a mosquitto user and set ownership for /var/log/mosquitto and /var/lib/mosquitto/ (default log and persistence locations).
@@ -242,34 +243,96 @@ auth_opt_backends files, postgres, jwt
 
 #### Cache
 
-Set cache option to true to use redis cache (defaults to false when missing). Also, set `cache_reset` to flush the redis DB on mosquitto startup:
+There are 2 types of caches supported: an in memory one using [go-cache](https://github.com/patrickmn/go-cache), or a Redis backed one.
+
+Set `cache` option to true to use a cache (defaults to false when missing) and `cache_type` to set the type of the cache. By default the plugin will use `go-cache` unless explicitly told to use Redis.
+Set `cache_reset` to flush the cache on mosquitto startup (**hydrating `go-cache` on startup is not yet supported**).
+
+Finally, set expiration times in seconds for authentication (`auth`) and authorization (`acl`) caches:
 
 ```
 auth_opt_cache true
+auth_opt_cache_type redis
 auth_opt_cache_reset true
+
+auth_opt_auth_cache_seconds 30
+auth_opt_acl_cache_seconds 30
 ```
 
 If `cache_reset` is set to false or omitted, cache won't be flushed upon service start.
 
-Redis will use the following defaults if no values are given. Also, these are the available options for cache:
+When using Redis, the following defaults will be used if no values are given. Also, these are the available options for cache:
 
 ```
 auth_opt_cache_host localhost
 auth_opt_cache_port 6379
 auth_opt_cache_password pwd
 auth_opt_cache_db 3
-auth_opt_auth_cache_seconds 30
-auth_opt_acl_cache_seconds 30
 ```
 
-If you want to use a Redis cluster as your cache, you need to set `auth_opt_cache_mode` to `cluster` and provide the different addresses as a list of comma separated `host:port` strings with the `auth_opt_cache_addresses` options:
+If you want to use a Redis cluster as your cache, you may omit previous Redis options and instead need to set `auth_opt_cache_mode` to `cluster` and provide the different addresses as a list of comma separated `host:port` strings with the `auth_opt_cache_addresses` options:
 
 ```
 auth_opt_cache_mode cluster
 auth_opt_cache_addresses host1:port1,host2:port2,host3:port3
 ```
 
-Notice that if `cache_mode` is not provided or isn't equal to `cluster`, cache will default to use a single instance with the common options. If instead the mode is correctly set to `cluster` but no addresses are given, the plugin will default to not use a cache.
+Notice that if `cache_mode` is not provided or isn't equal to `cluster`, cache will default to use a single instance with the common options. If instead the mode is set to `cluster` but no addresses are given, the plugin will default to not use a cache.
+
+#### Hashing
+
+There are 3 options for password hashing available: `PBKDF2` (default), `Bcrypt` and `Argon2ID`. Every backend that needs one -that's all but `grpc`, `http` and `custom`- gets a hasher and whether it uses specific options or general ones depends on the auth opts passed.
+
+Provided options define what hasher each backend will use:
+- If there are general hashing options available but no backend ones, then every backend will use those general ones for its hasher.
+- If there are no options available in general and none for a given backend either, that backend will use defaults (see `hashing/hashing.go` for default values).
+- If there are options for a given backend but no general ones, the backend will use its own hasher and any backend that doesn't register a hasher will use defaults.
+
+You may set the desired general hasher with this option, passing either `pbkdf2`, `bcrypt` or `argon2id` values. When not set, the option will default to `pbkdf2`.
+
+```
+auth_opt_hasher pbkdf2
+
+```
+
+Each hasher has specific options. Notice that when using the `pw` utility, these values must match those used to generate the password.
+
+##### PBKDF2
+
+```
+auth_opt_hasher_salt_size 16           # salt bytes length
+auth_opt_hasher_iterations 100000      # number of iterations
+auth_opt_hasher_keylen 64              # key length
+auth_opt_hasher_algorithm sha512       # hashing algorithm, either sha512 (default) or sha256
+auth_opt_hasher_salt_encoding          # salt encoding, either base64 (default) or utf-8
+```
+
+##### Bcrypt
+
+```
+auth_opt_hasher_cost 10                # key expansion iteration count
+```
+
+##### Argon2ID
+
+```
+auth_opt_hasher_salt_size 16           # salt bytes length
+auth_opt_hasher_iterations 3           # number of iterations
+auth_opt_hasher_keylen 64              # key length
+auth_opt_hasher_memory 4096            # amount of memory (in kibibytes) to use
+auth_opt_hasher_parallelism 2          # degree of parallelism (i.e. number of threads)
+```
+
+**These options may be defined for each backend that needs a hasher by prepending the backend's name to the option, e.g. for setting `argon2id` as `Postgres'` hasher**:
+
+```
+auth_opt_pg_hasher argon2id
+auth_opt_pg_hasher_salt_size 16           # salt bytes length
+auth_opt_pg_hasher_iterations 3           # number of iterations
+auth_opt_pg_hasher_keylen 64              # key length
+auth_opt_pg_hasher_memory 4096            # amount of memory (in kibibytes) to use
+auth_opt_pg_hasher_parallelism            # degree of parallelism (i.e. number of threads)
+```
 
 #### Logging
 
@@ -290,7 +353,7 @@ If `log_dest` or `log_file` are invalid, or if there's an error opening the file
 
 #### Prefixes
 
-Though the plugin may have multiple backends enabled, there's a way to specify which backend must be used for a given user: prefixes. When enabled, `prefixes` allows to check if the username contains a predefined prefix in the form prefix_username and use the configured backend for that prefix. Options to enable and set prefixes are the following:
+Though the plugin may have multiple backends enabled, there's a way to specify which backend must be used for a given user: prefixes. When enabled, `prefixes` allow to check if the username contains a predefined prefix in the form prefix_username and use the configured backend for that prefix. Options to enable and set prefixes are the following:
 
 ```
 auth_opt_check_prefix true
@@ -312,6 +375,38 @@ auth_opt_disable_superuser true
 
 Any other value or missing option will have `superuser` enabled.
 
+#### ACL access values
+
+Mosquitto 1.5 introduced a new ACL access value, `MOSQ_ACL_SUBSCRIBE`, which is similar to the classic `MOSQ_ACL_READ` value but not quite the same:
+
+```
+ *  MOSQ_ACL_SUBSCRIBE when a client is asking to subscribe to a topic string.
+ *                     This differs from MOSQ_ACL_READ in that it allows you to
+ *                     deny access to topic strings rather than by pattern. For
+ *                     example, you may use MOSQ_ACL_SUBSCRIBE to deny
+ *                     subscriptions to '#', but allow all topics in
+ *                     MOSQ_ACL_READ. This allows clients to subscribe to any
+ *                     topic they want, but not discover what topics are in use
+ *                     on the server.
+ *  MOSQ_ACL_READ      when a message is about to be sent to a client (i.e. whether
+ *                     it can read that topic or not).
+```
+
+The main difference is that subscribe is checked at first, when a client connects and tells the broker it wants to subscribe to some topic, while read is checked when an actual message is being published to that topic, which makes it particular.
+So in practice you could deny general subscriptions such as # by returning false from the acl check when you receive `MOSQ_ACL_SUBSCRIBE`, but allow any particular one by returning true on `MOSQ_ACL_READ`.
+Please take this into consideration when designing your ACL records on every backend.
+
+Also, these are the current available values from `mosquitto`:
+
+```
+#define MOSQ_ACL_NONE 0x00
+#define MOSQ_ACL_READ 0x01
+#define MOSQ_ACL_WRITE 0x02
+#define MOSQ_ACL_SUBSCRIBE 0x04
+```
+
+If you're using prior versions then `MOSQ_ACL_SUBSCRIBE` is not available and you don't need to worry about it.
+
 #### Backend options
 
 Any other options with a leading ```auth_opt_``` are handed to the plugin and used by the backends.
@@ -326,7 +421,7 @@ This issue captures these concerns and a basic plan to refactor tests: https://g
 
 ### Files
 
-The `files` backend implements the regular password and acl checks as described in mosquitto. Passwords should be in PBKDF2 format (for other backends too), and may be generated using the `pw` utility (built by default when running `make`) included in the plugin (or one of your own). Passwords may also be tested using the [pw-test package](https://github.com/iegomez/pw-test).
+The `files` backend implements the regular password and acl checks as described in mosquitto. Passwords should be in `PBKDF2`, `Bcrypt` or `Argon2ID` format (for other backends too), see [Hashing](#hashing) for more details about different hashing strategies. Hashes may be generated using the `pw` utility (built by default when running `make`) included in the plugin (or one of your own). Passwords may also be tested using the [pw-test package](https://github.com/iegomez/pw-test).
 
 Usage of `pw`:
 
@@ -334,15 +429,28 @@ Usage of `pw`:
 Usage of ./pw:
   -a string
     	algorithm: sha256 or sha512 (default "sha512")
+  -c int
+    	bcrypt ost param (default 10)
+  -e string
+    	salt encoding (default "base64")
+  -h string
+    	hasher: pbkdf2, argon2 or bcrypt (default "pbkdf2")
   -i int
-    	hash iterations (default 100000)
+    	hash iterations: defaults to 100000 for pbkdf2, please set to a reasonable value for argon2 (default 100000)
+  -l int
+    	key length, recommended values are 32 for sha256 and 64 for sha512
+  -m int
+    	memory for argon2 hash (default 4096)
   -p string
     	password
+  -pl int
+    	parallelism for argon2 (default 2)
   -s int
     	salt size (default 16)
+
 ```
 
-For this backend passwords and acls file paths must be given:
+For this backend `passwords` and `acls` file paths must be given:
 
 ```
 auth_opt_password_path /path/to/password_file
@@ -379,7 +487,8 @@ pattern read test/%c
 
 The `ACLs` file follows mosquitto's regular syntax: [mosquitto(5)](https://mosquitto.org/man/mosquitto-conf-5.html).
 
-There's no special `superuser` check for this backend since granting a user all permissions on `#` works in the same way. Furthermore, if this is **the only backend registered**, then providing no `ACLs` file path will default to grant all permissions for authenticated users when doing `ACL` checks (but then, why use a plugin if you can just use Mosquitto's static file checks, right?): if, instead, no `ACLs` file path is provided but **there are more backends registered**, this backend will default to deny any permissions for any user (again, back to basics).
+There's no special `superuser` check for this backend since granting a user all permissions on `#` works in the same way. 
+Furthermore, if this is **the only backend registered**, then providing no `ACLs` file path will default to grant all permissions for authenticated users when doing `ACL` checks (but then, why use a plugin if you can just use Mosquitto's static file checks, right?): if, instead, no `ACLs` file path is provided but **there are more backends registered**, this backend will default to deny any permissions for any user (again, back to basics).
 
 #### Testing Files
 
@@ -448,7 +557,7 @@ Queries work pretty much the same as in jpmen's plugin, so here's his discriptio
 	In the following example, the table has a column `rw` containing 1 for
 	readonly topics, 2 for writeonly topics and 3 for readwrite topics:
 
-	SELECT topic FROM acl WHERE (username = $1) AND (rw = $2 or rw = 3) 
+	SELECT topic FROM acl WHERE (username = $1) AND rw = $2 
 
 
 When option pg_superquery is not present, Superuser check will always return false, hence there'll be no superusers.
@@ -465,10 +574,13 @@ auth_opt_pg_user appserver
 auth_opt_pg_password appserver
 auth_opt_pg_userquery select password_hash from "user" where username = $1 and is_active = true limit 1
 auth_opt_pg_superquery select count(*) from "user" where username = $1 and is_admin = true
-auth_opt_pg_aclquery select distinct 'application/' || a.id || '/#' from "user" u inner join organization_user ou on ou.user_id = u.id inner join organization o on o.id = ou.organization_id inner join application a on a.organization_id =$
+auth_opt_pg_aclquery select distinct 'application/' || a.id || '/#' from "user" u inner join organization_user ou on ou.user_id = u.id inner join organization o on o.id = ou.organization_id inner join application a on a.organization_id = o.id where u.username = $1 and $2 = $2
 
 ```
 
+#### Password hashing
+
+For instructions on how to set a backend specific hasher or use the general one, see [Hashing](#hashing).
 
 #### Testing Postgres
 
@@ -520,7 +632,7 @@ To allow native passwords, set the option to true:
 auth_opt_mysql_allow_native_passwords true
 ```
 
-Finally, placeholders for mysql differ from those of postgres, changing from $1, $2, etc., to simply ?. So, following the postgres examples, same queries for mysql would look like these:
+Finally, placeholders for mysql differ from those of postgres, changing from $1, $2, etc., to simply ?. These are some **example** queries for `mysql`:
 
 User query:
 
@@ -538,9 +650,12 @@ SELECT COUNT(*) FROM account WHERE username = ? AND super = 1
 Acl query:
 
 ```sql
-SELECT topic FROM acl WHERE (username = ?) AND rw >= ?
+SELECT topic FROM acl WHERE (username = ?) AND rw = ?
 ```
 
+#### Password hashing
+
+For instructions on how to set a backend specific hasher or use the general one, see [Hashing](#hashing).
 
 #### Testing Mysql
 
@@ -609,6 +724,9 @@ sqlite_superquery SELECT COUNT(*) FROM account WHERE username = ? AND super = 1
 sqlite_aclquery SELECT topic FROM acl WHERE (username = ?) AND rw >= ?
 ```
 
+#### Password hashing
+
+For instructions on how to set a backend specific hasher or use the general one, see [Hashing](#hashing).
 
 #### Testing SQLite3
 
@@ -806,6 +924,9 @@ When option jwt_superquery is not present, Superuser check will always return fa
 
 When option jwt_aclquery is not present, AclCheck will always return true, hence all authenticated users will be authorized to pub/sub to any topic.
 
+#### Password hashing
+
+When using local mode, a hasher is expected. For instructions on how to set a backend specific hasher or use the general one, see [Hashing](#hashing).
 
 #### Prefixes
 
@@ -835,6 +956,7 @@ The following `auth_opt_` options are supported:
 | http_verify_peer   | false             |      N      | Whether to verify peer for tls    |
 | http_response_mode | status            |      N      | Response type (status, json, text)|
 | http_params_mode   | json              |      N      | Data type (json, form)            |
+| http_timeout       | 5                 |      N      | Timeout in seconds                |
 
 
 #### Response mode
@@ -903,6 +1025,10 @@ When not present, host defaults to "localhost", port to 6379, db to 2 and no pas
 If you want to use a Redis Cluster as your backend, you need to set `auth_opt_redis_mode` to `cluster` and provide the different addresses as a list of comma separated `host:port` strings with the `auth_opt_redis_addresses` options.
 If `auth_opt_redis_mode` is set to another value or not set, Redis defaults to single instance behaviour. If it is correctly set but no addresses are given, the backend will fail to initialize.
 
+#### Password hashing
+
+For instructions on how to set a backend specific hasher or use the general one, see [Hashing](#hashing).
+
 #### Testing Redis
 
 In order to test the Redis backend, the plugin needs to be able to connect to a redis server located at localhost, on port 6379, without using password and that a database named 2  exists (to avoid messing with the commonly used 0 and 1). 
@@ -927,7 +1053,8 @@ To test a Redis Cluster the plugin expects that there's a cluster with 3 masters
 The `mongo` backend, as the `redis` one, defines some formats to checks user, superuser and acls.
 Two collections are defined, one for users and the other for common acls.
 
-In the first case, a user consists of a "username" string, a "password" string (as always, PBKDF2 hash), a "superuser" boolean, and an "acls" array of rules. These rules consis of a "topic" string and an int "acc", where 1 means read only, 2 means write only and 3 means readwrite.
+In the first case, a user consists of a "username" string, a "password" string (as always, PBKDF2 hash), a "superuser" boolean, and an "acls" array of rules. 
+These rules consis of a "topic" string and an int "acc", where 1 means read only, 2 means write only, 3 means readwrite and 4 means subscribe (see ACL access values section for more details).
 
 Example user: 
 
@@ -937,7 +1064,8 @@ Example user:
 		"password" : "PBKDF2$sha512$100000$os24lcPr9cJt2QDVWssblQ==$BK1BQ2wbwU1zNxv3Ml3wLuu5//hPop3/LvaPYjjCwdBvnpwusnukJPpcXQzyyjOlZdieXTx6sXAcX4WnZRZZnw==", 
 		"superuser" : true, 
 		"acls" : [ 
-			{ "topic" : "test/topic/1", "acc" : 1 }, 
+			{ "topic" : "test/topic/1", "acc" : 1 },
+            { "topic" : "test/topic/1", "acc" : 4 }, 
 			{ "topic" : "single/topic/+", "acc" : 1}, 
 			{ "topic" : "hierarchy/#", "acc" : 1 }, 
 			{ "topic" : "write/test", "acc" : 2 }, 
@@ -981,6 +1109,10 @@ When not set, these options default to:
 	acls:  			 "acls"
 
 If you experience any problem connecting to a replica set, please refer to [this issue](https://github.com/iegomez/mosquitto-go-auth/issues/32).
+
+#### Password hashing
+
+For instructions on how to set a backend specific hasher or use the general one, see [Hashing](#hashing).
 
 #### Testing MongoDB
 
@@ -1155,6 +1287,8 @@ See the official [MQTT authentication & authorization guide](https://www.loraser
 This project provides example Dockerfiles for building a Docker container that contains `mosquitto` and the `mosquitto-go-auth` plug-in.
 
 Please read the [documentation](./docker/README.md) in the [docker](/docker) directory for more information.
+
+Images are provided on Dockerhub under [iegomez/mosquitto-go-auth](https://hub.docker.com/r/iegomez/mosquitto-go-auth).
 
 ### License
 

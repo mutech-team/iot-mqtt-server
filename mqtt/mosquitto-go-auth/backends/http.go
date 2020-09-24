@@ -25,6 +25,7 @@ type HTTP struct {
 	VerifyPeer   bool
 	ParamsMode   string
 	ResponseMode string
+	Timeout      int
 	Client       *h.Client
 }
 
@@ -71,9 +72,6 @@ func NewHTTP(authOpts map[string]string, logLevel log.Level) (HTTP, error) {
 
 	if superuserUri, ok := authOpts["http_superuser_uri"]; ok {
 		http.SuperuserUri = superuserUri
-	} else {
-		httpOk = false
-		missingOpts += " http_superuser_uri"
 	}
 
 	if aclUri, ok := authOpts["http_aclcheck_uri"]; ok {
@@ -105,11 +103,20 @@ func NewHTTP(authOpts map[string]string, logLevel log.Level) (HTTP, error) {
 		http.VerifyPeer = true
 	}
 
+	http.Timeout = 5
+	if timeoutString, ok := authOpts["http_timeout"]; ok {
+		if timeout, err := strconv.Atoi(timeoutString); err == nil {
+			http.Timeout = timeout
+		} else {
+			log.Errorf("unable to parse timeout: %s", err)
+		}
+	}
+
 	if !httpOk {
 		return http, errors.Errorf("HTTP backend error: missing remote options: %s", missingOpts)
 	}
 
-	http.Client = &h.Client{Timeout: 5 * time.Second}
+	http.Client = &h.Client{Timeout: time.Duration(http.Timeout) * time.Second}
 
 	if !http.VerifyPeer {
 		tr := &h.Transport{

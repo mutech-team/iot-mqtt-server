@@ -4,7 +4,7 @@ FROM debian:stable-slim as builder
 
 #Set mosquitto and plugin versions.
 #Change them for your needs.
-ENV MOSQUITTO_VERSION=1.6.8
+ENV MOSQUITTO_VERSION=1.6.10
 ENV PLUGIN_VERSION=0.6.1
 ENV GO_VERSION=1.13.8
 
@@ -45,6 +45,7 @@ RUN groupadd mosquitto \
 
 #Copy confs, plugin so and mosquitto binary.
 COPY --from=builder /app/mosquitto/ /mosquitto/
+COPY --from=builder /app/pw /mosquitto/pw
 COPY --from=builder /app/go-auth.so /mosquitto/go-auth.so
 COPY --from=builder /usr/local/sbin/mosquitto /usr/sbin/mosquitto
 
