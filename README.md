@@ -178,3 +178,14 @@ def auth_topic(body: str) -> bool:
     except Exception as e:
         return False
 ```
+urls.py
+```python
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('user', views.user, name='user'),
+    path('superuser', views.superuser, name='superuser'),
+    path('topic', views.topic, name='topic'),
+]
+```
