@@ -39,10 +39,10 @@ RUN go get google.golang.org/grpc
 RUN go get google.golang.org/grpc/codes
 RUN go get google.golang.org/grpc/credentials
 RUN go get google.golang.org/grpc/status
-
+RUN dir
+RUN apt-get -y install uthash-dev
 COPY mqtt mqtt
-COPY mosquitto.conf /mqtt/mosquitto/mosquitto.conf
 COPY build.sh .
 RUN ./build.sh
-CMD echo 'requirepass cachepass' >> /etc/redis/redis.conf && service redis-server restart && redis-server --daemonize yes && ./mqtt/mosquitto/src/mosquitto -c /mqtt/mosquitto/mosquitto.conf && tail -f /dev/null
+CMD echo 'requirepass cachepass' >> /etc/redis/redis.conf && service redis-server restart && redis-server --daemonize yes && ./mqtt/mosquitto/src/mosquitto -c /mqtt/mosquitto/configuration/mosquitto.conf && tail -f /dev/null
 
