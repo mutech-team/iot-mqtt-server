@@ -21,6 +21,7 @@ RUN apt-get -y install uuid-dev
 RUN apt-get -y install golang-go
 RUN apt-get -y install golang
 RUN apt-get -y install go-dep
+RUN apt-get -y install uthash-dev
 
 #----install all go packages----#
 RUN go get github.com/go-redis/redis
