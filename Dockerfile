@@ -40,8 +40,7 @@ RUN go get google.golang.org/grpc
 RUN go get google.golang.org/grpc/codes
 RUN go get google.golang.org/grpc/credentials
 RUN go get google.golang.org/grpc/status
-RUN dir
-RUN apt-get -y install uthash-dev
+
 COPY mqtt mqtt
 COPY build.sh .
 RUN ./build.sh
