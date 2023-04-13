@@ -6,3 +6,5 @@ services:
     container_name: "iot-mqtt-server"
     ports:
       - '1883:1883'
+    volumes:
+      - ./configuration:/mqtt/mosquitto/configuration

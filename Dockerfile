@@ -21,6 +21,7 @@ RUN apt-get -y install uuid-dev
 RUN apt-get -y install golang-go
 RUN apt-get -y install golang
 RUN apt-get -y install go-dep
+RUN apt-get -y install uthash-dev
 
 #----install all go packages----#
 RUN go get github.com/go-redis/redis
@@ -41,8 +42,7 @@ RUN go get google.golang.org/grpc/credentials
 RUN go get google.golang.org/grpc/status
 
 COPY mqtt mqtt
-COPY mosquitto.conf /mqtt/mosquitto/mosquitto.conf
 COPY build.sh .
 RUN ./build.sh
-CMD echo 'requirepass cachepass' >> /etc/redis/redis.conf && service redis-server restart && redis-server --daemonize yes && ./mqtt/mosquitto/src/mosquitto -c /mqtt/mosquitto/mosquitto.conf && tail -f /dev/null
+CMD echo 'requirepass cachepass' >> /etc/redis/redis.conf && service redis-server restart && redis-server --daemonize yes && ./mqtt/mosquitto/src/mosquitto -c /mqtt/mosquitto/configuration/mosquitto.conf && tail -f /dev/null
 
